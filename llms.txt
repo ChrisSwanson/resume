@@ -1,0 +1,33 @@
+# Chris Swanson
+
+> Principal GenAI Security Architect. Security architect and engineer: systems thinking, AI security, and building teams that ship.
+
+This site is an interactive resume. The same content is available in plain formats:
+
+## Resume
+
+- [resume.md](resume.md): the full resume as markdown
+- [resume.json](resume.json): the full resume as structured JSON
+- [index.html?view=text](index.html?view=text): the resume as a plain web page
+
+## Experience
+
+- Wells Fargo: Principal GenAI Security Architect (2026 – Present) [id: wellsfargo]
+- Chainalysis: Senior Security Engineer (Security Engineering) / Senior Enterprise Security Engineer, Lead (2022 – 2024) [id: chainalysis]
+- ID.me: Senior Security Engineer, Lead (2021 – 2022) [id: idme]
+- Marqeta: Information Security Detection and Response Engineer, Lead (2020 – 2021) [id: marqeta]
+- WeWork: Senior Infrastructure Security Engineer (2019 – 2020) [id: wework]
+- Twitch (Amazon): Security Engineer (2016 – 2019) [id: twitch]
+- Palantir: Security Engineer (2013 – 2016) [id: palantir]
+- TiVo: Security Engineer (2011 – 2013) [id: tivo]
+
+## WebMCP tools
+
+In a browser that supports WebMCP (document.modelContext), index.html registers these tools:
+
+- `get_profile`: Name, title, summary, skills and contact links for Chris Swanson.
+- `list_experience`: Every role held, most recent first, as "Company: Role (dates) [id: …]" lines. Use the id with get_experience.
+- `get_experience`: Full details (role, dates, summary, highlights, tags) for one company.
+- `get_resume`: The whole resume, as markdown (default) or JSON.
+- `set_view`: Switch the page between the 3D valley, the plain text resume, and the agent view.
+- `show_company`: Show one company to the person viewing the page: opens its card in 3D or scrolls to it in text.

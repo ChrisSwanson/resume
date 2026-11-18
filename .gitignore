@@ -1,0 +1,10 @@
+node_modules/
+.claude/worktrees/
+.DS_Store
+*.log
+.impeccable/hook.cache.json
+__pycache__/
+render/out/
+
+# owner's private source resume (never commit)
+/Chris Swanson Resume.md

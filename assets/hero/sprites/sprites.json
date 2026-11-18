@@ -1,0 +1,424 @@
+{
+ "version": 1,
+ "about": "render/sprites.py; coordinates in the largest file of each atlas",
+ "atlases": {
+  "cars": {
+   "pxPerM": 4.8,
+   "size": [
+    3864,
+    620
+   ],
+   "files": {
+    "1": "cars-1x.webp",
+    "2": "cars-2x.webp"
+   }
+  },
+  "air": {
+   "pxPerM": 4.8,
+   "size": [
+    2656,
+    1490
+   ],
+   "files": {
+    "1": "air-1x.webp",
+    "2": "air-2x.webp"
+   }
+  },
+  "marker": {
+   "pxPerM": 4.8,
+   "size": [
+    66,
+    70
+   ],
+   "files": {
+    "1": "marker.1x.webp",
+    "2": "marker.2x.webp"
+   }
+  },
+  "shadows": {
+   "pxPerM": 2.4,
+   "size": [
+    1888,
+    174
+   ],
+   "files": {
+    "1": "shadows.webp"
+   }
+  }
+ },
+ "models": {
+  "sedan": {
+   "atlas": "cars",
+   "origin": [
+    0,
+    240
+   ],
+   "cell": [
+    38,
+    28
+   ],
+   "anchor": [
+    16,
+    15
+   ],
+   "headings": 16,
+   "headingStep": 22.5,
+   "variants": 7,
+   "phases": 1,
+   "extraYaws": [
+    5.625,
+    11.25,
+    16.875,
+    28.125,
+    33.75,
+    39.375,
+    50.625,
+    56.25,
+    61.875,
+    163.125,
+    168.75,
+    174.375,
+    185.625,
+    191.25,
+    196.875,
+    208.125,
+    213.75,
+    219.375,
+    230.625,
+    236.25,
+    241.875,
+    253.125,
+    258.75,
+    264.375,
+    275.625,
+    281.25,
+    286.875,
+    343.125,
+    348.75,
+    354.375
+   ],
+   "len": 4.4
+  },
+  "truck": {
+   "atlas": "cars",
+   "origin": [
+    0,
+    436
+   ],
+   "cell": [
+    64,
+    46
+   ],
+   "anchor": [
+    22,
+    27
+   ],
+   "headings": 16,
+   "headingStep": 22.5,
+   "variants": 4,
+   "phases": 1,
+   "extraYaws": [
+    5.625,
+    11.25,
+    16.875,
+    28.125,
+    33.75,
+    39.375,
+    50.625,
+    56.25,
+    61.875,
+    163.125,
+    168.75,
+    174.375,
+    185.625,
+    191.25,
+    196.875,
+    208.125,
+    213.75,
+    219.375,
+    230.625,
+    236.25,
+    241.875,
+    253.125,
+    258.75,
+    264.375,
+    275.625,
+    281.25,
+    286.875,
+    343.125,
+    348.75,
+    354.375
+   ],
+   "len": 6.6
+  },
+  "bus": {
+   "atlas": "cars",
+   "origin": [
+    0,
+    0
+   ],
+   "cell": [
+    84,
+    60
+   ],
+   "anchor": [
+    33,
+    34
+   ],
+   "headings": 16,
+   "headingStep": 22.5,
+   "variants": 4,
+   "phases": 1,
+   "extraYaws": [
+    5.625,
+    11.25,
+    16.875,
+    28.125,
+    33.75,
+    39.375,
+    50.625,
+    56.25,
+    61.875,
+    163.125,
+    168.75,
+    174.375,
+    185.625,
+    191.25,
+    196.875,
+    208.125,
+    213.75,
+    219.375,
+    230.625,
+    236.25,
+    241.875,
+    253.125,
+    258.75,
+    264.375,
+    275.625,
+    281.25,
+    286.875,
+    343.125,
+    348.75,
+    354.375
+   ],
+   "len": 11.4
+  },
+  "prop": {
+   "atlas": "air",
+   "origin": [
+    0,
+    0
+   ],
+   "cell": [
+    102,
+    72
+   ],
+   "anchor": [
+    51,
+    40
+   ],
+   "headings": 16,
+   "headingStep": 22.5,
+   "variants": 3,
+   "phases": 4,
+   "len": 12.0,
+   "shadow": "prop-shadow"
+  },
+  "jet": {
+   "atlas": "air",
+   "origin": [
+    0,
+    864
+   ],
+   "cell": [
+    166,
+    142
+   ],
+   "anchor": [
+    83,
+    80
+   ],
+   "headings": 16,
+   "headingStep": 22.5,
+   "variants": 3,
+   "phases": 1,
+   "len": 31.0,
+   "shadow": "jet-shadow"
+  },
+  "heli": {
+   "atlas": "air",
+   "origin": [
+    48,
+    1290
+   ],
+   "cell": [
+    86,
+    66
+   ],
+   "anchor": [
+    43,
+    37
+   ],
+   "headings": 16,
+   "headingStep": 22.5,
+   "variants": 3,
+   "phases": 1,
+   "len": 10.0,
+   "shadow": "heli-shadow",
+   "rotor": "rotor"
+  },
+  "rotor": {
+   "atlas": "air",
+   "origin": [
+    2136,
+    0
+   ],
+   "cell": [
+    80,
+    58
+   ],
+   "anchor": [
+    39,
+    33
+   ],
+   "headings": 1,
+   "headingStep": 360.0,
+   "variants": 1,
+   "phases": 8
+  },
+  "puff": {
+   "atlas": "air",
+   "origin": [
+    0,
+    1290
+   ],
+   "cell": [
+    48,
+    50
+   ],
+   "anchor": [
+    24,
+    22
+   ],
+   "headings": 1,
+   "headingStep": 360.0,
+   "variants": 4,
+   "phases": 1
+  },
+  "balloon": {
+   "atlas": "air",
+   "origin": [
+    1632,
+    0
+   ],
+   "cell": [
+    126,
+    158
+   ],
+   "anchor": [
+    63,
+    131
+   ],
+   "headings": 4,
+   "headingStep": 11.25,
+   "variants": 4,
+   "phases": 1,
+   "shadow": "balloon-shadow"
+  },
+  "marker": {
+   "atlas": "marker",
+   "origin": [
+    0,
+    0
+   ],
+   "cell": [
+    66,
+    70
+   ],
+   "anchor": [
+    33,
+    67
+   ],
+   "headings": 1,
+   "headingStep": 360.0,
+   "variants": 1,
+   "phases": 1
+  },
+  "prop-shadow": {
+   "atlas": "shadows",
+   "origin": [
+    140,
+    70
+   ],
+   "cell": [
+    62,
+    46
+   ],
+   "anchor": [
+    27,
+    22
+   ],
+   "headings": 16,
+   "headingStep": 22.5,
+   "variants": 1,
+   "phases": 1
+  },
+  "jet-shadow": {
+   "atlas": "shadows",
+   "origin": [
+    0,
+    0
+   ],
+   "cell": [
+    118,
+    70
+   ],
+   "anchor": [
+    50,
+    34
+   ],
+   "headings": 16,
+   "headingStep": 22.5,
+   "variants": 1,
+   "phases": 1
+  },
+  "heli-shadow": {
+   "atlas": "shadows",
+   "origin": [
+    0,
+    132
+   ],
+   "cell": [
+    58,
+    42
+   ],
+   "anchor": [
+    25,
+    20
+   ],
+   "headings": 16,
+   "headingStep": 22.5,
+   "variants": 1,
+   "phases": 1
+  },
+  "balloon-shadow": {
+   "atlas": "shadows",
+   "origin": [
+    0,
+    70
+   ],
+   "cell": [
+    140,
+    62
+   ],
+   "anchor": [
+    22,
+    25
+   ],
+   "headings": 1,
+   "headingStep": 11.25,
+   "variants": 1,
+   "phases": 1
+  }
+ }
+}

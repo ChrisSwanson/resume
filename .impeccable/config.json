@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-11-17T08:05:08.197Z",
+        "reason": "Claude: the flagged text-shadow is a neutral dark navy (rgba(10,20,40)) legibility shadow under white captions drawn over the live 3D canvas, not a chromatic glow"
+      }
+    ]
+  }
+}
