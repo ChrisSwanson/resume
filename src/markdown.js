@@ -1,5 +1,5 @@
 // Minimal markdown → HTML for the subset src/format.js produces:
-// headings, paragraphs, blockquotes, "-" lists, **bold**, *italic*, `code`, [links](url).
+// headings, paragraphs, blockquotes, "-" lists (nested by two-space indents), **bold**, *italic*, `code`, [links](url).
 // Escapes everything first, and only allows http(s), mailto and relative link targets.
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -23,7 +23,21 @@ export function markdownToHtml(md) {
   const out = [];
   let list = null, para = [];
   const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(' '))}</p>`); para = []; } };
-  const flushList = () => { if (list) { out.push(`<ul>${list.map((li) => `<li>${inline(li)}</li>`).join('')}</ul>`); list = null; } };
+  // list: [{ text, depth }] in document order, rendered as nested <ul>s
+  const renderList = (items, i = 0, depth = items[0].depth) => {
+    let html = '<ul>';
+    while (i < items.length && items[i].depth >= depth) {
+      html += `<li>${inline(items[i].text)}`;
+      i++;
+      if (i < items.length && items[i].depth > depth) {
+        const [sub, next] = renderList(items, i, items[i].depth);
+        html += sub; i = next;
+      }
+      html += '</li>';
+    }
+    return [html + '</ul>', i];
+  };
+  const flushList = () => { if (list) { out.push(renderList(list)[0]); list = null; } };
   for (const raw of md.split('\n')) {
     const line = raw.trimEnd();
     let m;
@@ -35,9 +49,9 @@ export function markdownToHtml(md) {
     } else if ((m = line.match(/^>\s?(.*)$/))) {
       flushPara(); flushList();
       out.push(`<blockquote>${inline(m[1])}</blockquote>`);
-    } else if ((m = line.match(/^-\s+(.*)$/))) {
+    } else if ((m = line.match(/^( *)-\s+(.*)$/))) {
       flushPara();
-      (list ??= []).push(m[1]);
+      (list ??= []).push({ text: m[2], depth: Math.floor(m[1].length / 2) });
     } else {
       flushList();
       para.push(line);

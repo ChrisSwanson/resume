@@ -3,6 +3,8 @@
 //    for screen readers and shown if the image fails), role, dates, location and summary;
 //  - the side drawer: the same head, then every highlight and the tags.
 // Empty fields are left out, so a sparse record gives a short panel.
+import { highlightText, highlightSub } from '../format.js';
+
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -64,12 +66,18 @@ export function fillDrawer(scroller, rec, { onClose }) {
   const body = el('div', 'cc-body');
   body.append(name);
   facts(rec, body);
-  const highlights = (d.highlights ?? []).filter(filled);
-  if (highlights.length) {
-    const ul = el('ul', 'cc-list');
-    for (const h of highlights) ul.append(el('li', null, h));
-    body.append(ul);
-  }
+  const list = (items, cls) => {
+    const ul = el('ul', cls);
+    for (const h of items) {
+      if (!filled(highlightText(h))) continue;
+      const li = el('li', null, highlightText(h));
+      const sub = highlightSub(h);
+      if (sub.length) li.append(list(sub));
+      ul.append(li);
+    }
+    return ul;
+  };
+  if ((d.highlights ?? []).some((h) => filled(highlightText(h)))) body.append(list(d.highlights, 'cc-list'));
   const tags = (d.tags ?? []).filter(filled);
   if (tags.length) {
     const t = el('div', 'cc-tags');

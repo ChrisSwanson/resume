@@ -65,6 +65,7 @@ button { font: inherit; cursor: pointer; }
 .cc-summary { margin: 8px 0 0; font-size: 14px; line-height: 1.5; }
 .cc-list { margin: 12px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.5; }
 .cc-list li { margin-bottom: 6px; }
+.cc-list ul { margin: 6px 0 0; padding-left: 18px; font-size: 13.5px; }
 .cc-list li::marker { color: var(--brand); }
 .cc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .cc-tags span { font-size: 12px; padding: 2px 8px; border-radius: 4px; background: rgba(51, 55, 61, 0.07); }

@@ -28,12 +28,23 @@ export function profileMarkdown(p) {
   return lines.join('\n');
 }
 
+/** A highlight is a string, or { text, sub: [highlights] } for a bullet with sub-bullets. */
+export const highlightText = (h) => (typeof h === 'string' ? h : h?.text ?? '');
+export const highlightSub = (h) => (typeof h === 'string' ? [] : h?.sub ?? []);
+
+function highlightLines(items, lines, depth = 0) {
+  for (const h of items) {
+    lines.push(`${'  '.repeat(depth)}- ${highlightText(h)}`);
+    highlightLines(highlightSub(h), lines, depth + 1);
+  }
+}
+
 export function companyMarkdown(c, level = 3) {
   const h = '#'.repeat(level);
   const meta = [c.dates, c.location].filter(Boolean).join(' · ');
   const lines = [`${h} ${companyTitle(c)}`, '', `**${c.role}**${meta ? ` · ${meta}` : ''}`, ''];
   if (c.summary) lines.push(c.summary, '');
-  for (const hl of c.highlights ?? []) lines.push(`- ${hl}`);
+  highlightLines(c.highlights ?? [], lines);
   if (c.highlights?.length) lines.push('');
   if (c.tags?.length) lines.push(`*${c.tags.join(' · ')}*`, '');
   return lines.join('\n');
@@ -48,7 +59,6 @@ export function educationMarkdown(e) {
 
 export function toMarkdown(profile, companies) {
   const out = [profileMarkdown(profile)];
-  if (profile.skills?.length) out.push('## Skills', '', profile.skills.map((s) => `- ${s}`).join('\n'), '');
   out.push('## Experience', '');
   for (const c of newestFirst(companies)) out.push(companyMarkdown(c));
   if (profile.education?.length) {
@@ -58,6 +68,7 @@ export function toMarkdown(profile, companies) {
   if (profile.certifications?.length) {
     out.push('## Certifications & training', '', profile.certifications.map((c) => `- ${c.name}${c.year ? ` (${c.year})` : ''}`).join('\n'), '');
   }
+  if (profile.skills?.length) out.push('## Skills', '', profile.skills.map((s) => `- ${s}`).join('\n'), '');
   if (profile.strengths?.length) out.push('## CliftonStrengths', '', profile.strengths.join(' · '), '');
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }

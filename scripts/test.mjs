@@ -1,7 +1,7 @@
 // Fast checks with no browser: content shape, formatters, and agent tools.
 import assert from 'node:assert/strict';
 import { PROFILE, COMPANIES } from '../content.js';
-import { findCompany, toMarkdown, toJSON } from '../src/format.js';
+import { findCompany, toMarkdown, toJSON, companyMarkdown } from '../src/format.js';
 import { markdownToHtml } from '../src/markdown.js';
 import { agentTools } from '../src/agent-tools.js';
 
@@ -11,6 +11,23 @@ for (const c of COMPANIES) {
   for (const k of ['id', 'name', 'role', 'dates']) assert.ok(c[k], `${c.name ?? c.id}: ${k} is required`);
   assert.ok(!ids.has(c.id), `duplicate company id ${c.id}`); ids.add(c.id);
 }
+
+// highlights: strings, or { text, sub } with a non-empty text and an array of highlights
+const checkHighlights = (items, where) => {
+  assert.ok(Array.isArray(items), `${where}: highlights must be an array`);
+  for (const h of items) {
+    if (typeof h === 'string') { assert.ok(h.trim(), `${where}: empty highlight`); continue; }
+    assert.ok(typeof h?.text === 'string' && h.text.trim(), `${where}: highlight object needs text`);
+    checkHighlights(h.sub ?? [], `${where} > ${h.text.slice(0, 30)}`);
+  }
+};
+for (const c of COMPANIES) checkHighlights(c.highlights ?? [], c.id);
+
+// sub-bullets survive markdown and html, nested under their parent
+const nested = { id: 'x', name: 'X', role: 'R', dates: 'D', highlights: ['a', { text: 'b', sub: ['c', { text: 'd', sub: ['e'] }] }, 'f'] };
+assert.match(companyMarkdown(nested), /^- b\n  - c\n  - d\n    - e\n- f$/m);
+assert.equal(markdownToHtml('- a\n- b\n  - c\n  - d\n    - e\n- f'),
+  '<ul><li>a</li><li>b<ul><li>c</li><li>d<ul><li>e</li></ul></li></ul></li><li>f</li></ul>');
 
 // content-agnostic: every record is findable by id and by name, case/punctuation-insensitively
 for (const c of COMPANIES) {
