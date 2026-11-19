@@ -1,4 +1,6 @@
 // Landmark dots and hover labels in the City view (src/hero/city.js).
+// Spec v0.3: a dot is an HTML element (.site-dot[data-id] with a .sd-core) in the .city-dots layer, at the
+// red marker's tip; a transparent circle.site-hit in a pointer-only g.site-tip carries click, tap and hover; a.site carries Tab.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, launch, openCity, frames, DESKTOP, PHONE } from './harness.mjs';
@@ -8,13 +10,14 @@ before(async () => { server = await startServer(); browser = await launch(); });
 after(async () => { await browser?.close(); server?.stop(); });
 
 const dots = (page) => page.evaluate(() => [...document.querySelectorAll('#view-3d a.site')].map((a) => {
-  const d = a.querySelector('.site-dot');
-  if (!d) return { id: a.dataset.id, dot: null };
-  const r = d.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const el = document.querySelector(`#view-3d .city-dots .site-dot[data-id="${a.dataset.id}"]`), core = el?.querySelector('.sd-core');
+  const hitEl = document.querySelector(`#view-3d .site-tip[data-id="${a.dataset.id}"] .site-hit`);
+  if (!core || !hitEl) return { id: a.dataset.id, dot: null };
+  const r = core.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
   const hit = document.elementsFromPoint(cx, cy);
   return { id: a.dataset.id, w: r.width, h: r.height, cx, cy, top: r.top, dot: true,
     inView: cx > 60 && cy > 60 && cx < innerWidth - 60 && cy < innerHeight - 60,
-    topIsDot: hit[0] === d, hitSite: hit.find((e) => e.closest?.('a.site'))?.closest('a.site').dataset.id };
+    topIsDot: hit[0] === hitEl, hitSite: hit.find((e) => e.closest?.('a.site, .site-tip'))?.closest('a.site, .site-tip').dataset.id };
 }));
 const label = (page) => page.evaluate(() => {
   const l = document.querySelector('.site-label');
@@ -22,13 +25,13 @@ const label = (page) => page.evaluate(() => {
   const r = l.getBoundingClientRect();
   return { show: l.classList.contains('show'), text: l.textContent, left: r.left, top: r.top, right: r.right, bottom: r.bottom };
 });
-const dotOf = (page, id) => page.evaluate((id) => { const r = document.querySelector(`a.site[data-id="${id}"] .site-dot`).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top }; }, id);
+const dotOf = (page, id) => page.evaluate((id) => { const r = document.querySelector(`.city-dots .site-dot[data-id="${id}"] .sd-core`).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top }; }, id);
 const nameOf = (page, id) => page.evaluate((id) => document.querySelector(`a.site[data-id="${id}"]`).getAttribute('aria-label'), id);
-const hiddenIds = (page) => page.evaluate(() => [...document.querySelectorAll('.site-dot.is-hidden')].map((d) => d.closest('a.site').dataset.id));
+const hiddenIds = (page) => page.evaluate(() => [...document.querySelectorAll('.city-dots .site-dot.is-hidden')].map((d) => d.dataset.id));
 const activeSite = (page) => page.evaluate(() => document.activeElement?.closest?.('a.site')?.dataset.id ?? null);
 
 for (const [name, opts] of [['desktop', DESKTOP], ['phone', PHONE]]) {
-  test(`${name}: every site has a dot of 9-14px that is the topmost hit and belongs to its site`, async () => {
+  test(`${name}: every site has a core dot of 9-14px whose hit circle is the topmost hit and belongs to its site`, async () => {
     const { context, page } = await openCity(browser, server.url, opts);
     const all = await dots(page);
     assert.ok(all.length >= 5);
@@ -130,7 +133,7 @@ test('reduced motion: dots still present, no transitions', async () => {
   await frames(page, 2);
   const all = await dots(page);
   assert.ok(all.length >= 5 && all.every((d) => d.dot));
-  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.site-dot')).transitionDuration), '0s');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.site-dot .sd-core')).transitionDuration), '0s');
   await context.close();
 });
 
@@ -146,5 +149,35 @@ test('desktop: a dot near the top edge gets its label below, not on top of it', 
   assert.ok(l.top >= 0 && l.bottom <= 900, 'inside viewport');
   const dotBottom = d.y + (d.y - d.top);
   assert.ok(l.bottom <= d.top || l.top >= dotBottom, `label ${l.top}-${l.bottom} clear of dot ${d.top}-${dotBottom}`);
+  await context.close();
+});
+
+// The hit circles are aria-hidden duplicates of the building links: pointer targets only. Focus on an
+// aria-hidden element is announced as nothing, so they must never take it (Tab, click or script).
+test('desktop: a dot\'s hit target takes no focus, from a click or from script, and is not a link', async () => {
+  const { context, page } = await openCity(browser, server.url, DESKTOP);
+  const t = (await dots(page)).find((d) => d.dot && d.inView && d.topIsDot);
+  const tip = page.locator(`.site-tip[data-id="${t.id}"]`);
+  assert.equal(await tip.evaluate((el) => { el.focus(); return document.activeElement === el; }), false, 'script focus');
+  assert.equal(await tip.evaluate((el) => el.matches('a, [href], [tabindex]')), false, 'not a link and no tabindex');
+  await page.mouse.click(t.cx, t.cy);
+  await page.waitForTimeout(600);
+  assert.ok(await page.locator('.city-drawer').isVisible(), 'the click still opens the drawer');
+  assert.equal(await page.evaluate(() => !!document.activeElement?.closest?.('.site-tip')), false, 'click focus');
+  assert.deepEqual(page.errors, []);
+  await context.close();
+});
+
+test('desktop: the pointer leaving the page from a site clears its hover, without an error', async () => {
+  const { context, page } = await openCity(browser, server.url, DESKTOP);
+  const t = (await dots(page)).find((d) => d.dot && d.inView);
+  await page.mouse.move(t.cx, t.cy);
+  await page.waitForTimeout(250);
+  assert.ok((await label(page)).show);
+  // what a browser sends when the pointer leaves the window: pointerout with no relatedTarget
+  await page.locator(`.site-tip[data-id="${t.id}"] .site-hit`).dispatchEvent('pointerout', { bubbles: true, relatedTarget: null, pointerType: 'mouse' });
+  await page.waitForTimeout(250);
+  assert.deepEqual(page.errors, []);
+  assert.equal((await label(page)).show, false);
   await context.close();
 });

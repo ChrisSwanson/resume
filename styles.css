@@ -30,7 +30,7 @@ button { font: inherit; cursor: pointer; }
 .city-ground, .city-cars, .city-air { pointer-events: none; }
 .city-world > .city-cars { overflow: hidden; }   /* the road masks (assets/hero/roads-*.png) are set by sprites.js */
 .city-regions { pointer-events: none; }
-.site { pointer-events: auto; cursor: pointer; outline: none; }
+.site, .site-tip { pointer-events: auto; cursor: pointer; outline: none; }
 /* the highlight follows the site's traced outline exactly: a soft tint of its brand colour with a
    thin light edge; keyboard focus adds a clear ring in the title blue */
 .site path { fill: transparent; stroke: transparent; stroke-width: 1.5; stroke-linejoin: round; vector-effect: non-scaling-stroke;
@@ -85,14 +85,22 @@ button { font: inherit; cursor: pointer; }
 :root { --drawer-w: clamp(320px, 33vw, 640px); }
 .city.drawer-open .city-tools, .city.drawer-open .city-sites, .city.drawer-open .city-keys { right: calc(var(--drawer-w) + 16px); }
 
-/* landmark dots (a circle in each a.site; .is-hidden while the red marker is on it) and the one
-   name pill (.site-label, fixed, placed by city.js, .show on hover/focus). No looping animation, ever. */
-.site-dot { fill: #fff; stroke: var(--brand, var(--title)); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: pointer;
-  paint-order: stroke; filter: drop-shadow(0 0 1px rgba(20, 22, 26, .75)) drop-shadow(0 1px 1px rgba(20, 22, 26, .35));
-  transform-box: fill-box; transform-origin: center; transition: transform .12s ease-out, filter .12s ease-out; }
+/* landmark dots: HTML elements in .city-dots (inside the world, above the sprites, below the marker), placed at
+   the red marker's tip by city.js; a transparent circle.site-hit in each pointer-only g.site-tip (drawn above every building) takes the pointer.
+   Only the ring's transform and opacity animate (compositor-only); the glow is static. .is-hidden while the
+   red marker is on the site; .is-on mirrors hover / list / drawer. The name pill (.site-label) is fixed. */
+.city-dots { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.site-dot { --dot: 11px; position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
 .site-dot.is-hidden { display: none; }
-.site:hover .site-dot { transform: scale(1.3);
-  filter: brightness(1.25) saturate(1.15) drop-shadow(0 0 1px rgba(20, 22, 26, .85)) drop-shadow(0 1px 2px rgba(20, 22, 26, .4)); }
+.sd-core, .sd-ring { position: absolute; left: calc(var(--dot) / -2); top: calc(var(--dot) / -2); width: var(--dot); height: var(--dot); border-radius: 50%; box-sizing: border-box; }
+.sd-core { background: var(--brand, var(--title)); border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(20, 22, 26, .3), 0 0 8px 2px color-mix(in srgb, var(--brand, var(--title)) 60%, transparent), 0 0 18px 4px color-mix(in srgb, var(--brand, var(--title)) 30%, transparent);
+  transition: transform .12s ease-out; }
+.site-dot.is-on .sd-core { transform: scale(1.3); }
+.sd-ring { border: 2px solid var(--brand, var(--title)); background: color-mix(in srgb, var(--brand, var(--title)) 25%, transparent); opacity: 0;
+  animation: dot-pulse 2.4s cubic-bezier(.2, .6, .4, 1) infinite; animation-delay: calc(var(--i, 0) * -.6s); will-change: transform, opacity; }
+@keyframes dot-pulse { 0% { transform: scale(1); opacity: .95; } 60% { opacity: .45; } 100% { transform: scale(3.2); opacity: 0; } }
+.site-hit { fill: transparent; stroke: none; pointer-events: all; cursor: pointer; }
 .site-label { position: fixed; left: 0; top: 0; z-index: 3; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 7px;
   border-radius: 999px; background: rgba(28, 31, 36, .92); color: #fff; font-size: 12px; font-weight: 700; line-height: 1.2; white-space: nowrap;
   pointer-events: none; opacity: 0; transition: opacity .12s ease-out; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
@@ -166,9 +174,35 @@ button { font: inherit; cursor: pointer; }
 @media (max-width: 640px) { .hint-narrow { display: inline; } }
 @media (prefers-reduced-motion: reduce) {
   .city-card, .city-drawer { animation: none; transition: none; }
-  .site path, .city-hint, .site-dot, .site-label { transition: none; }
+  .site path, .city-hint, .sd-core, .site-label { transition: none; }
+  .sd-ring { animation: none; }
   .cm-bob { animation: none; }
 }
+
+/* ── loading screen ────────────────────────────────────────────
+   <html data-boot> is set by the inline boot script (src/hero/boot.js) before first paint. Before app.js
+   has set body[data-view] the City boot shows #view-3d and hides the static Text view; without JavaScript
+   none of this applies and the Text view shows. The placeholder (.city-ph-img) is the ~1 KB blurred render,
+   framed with the maths of layout() in city.js: scale = max(resting view covers, image covers), centred. */
+html[data-boot="3d"] body:not([data-view]) #view-3d { display: block; }
+html[data-boot="3d"] body:not([data-view]) .view-switch { display: flex; }
+html[data-boot]:not([data-boot="text"]) body:not([data-view]) #view-text { display: none; }
+.city-ph { position: absolute; inset: 0; overflow: hidden; container-type: size; pointer-events: none; }
+.city-ph-img { --s: max(calc(max(100cqw / var(--ph-vx), 100cqh / var(--ph-vy)) * var(--ph-over)), calc(100cqw / var(--ph-w)), calc(100cqh / var(--ph-h)));
+  position: absolute; left: 50%; top: 50%; width: calc(var(--ph-w) * var(--s)); height: calc(var(--ph-h) * var(--s));
+  transform: translate(-50%, -50%); background: var(--ph-img) center / 100% 100% no-repeat;
+  filter: blur(12px); }   /* static (never animated): smooths the ~40 px source on phones */
+.city-loading { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 4; margin: 0; padding: 6px 12px;
+  font-size: 13px; color: var(--ink-soft); background: var(--chip-bg); border: 1.5px solid var(--chip-edge); border-radius: 8px;
+  box-shadow: 0 2px 0 var(--chip-edge-soft); pointer-events: none; white-space: nowrap; }
+.city:not(.loading) .city-loading { display: none; }
+@media (max-width: 640px) { .city-loading { bottom: 56px; } }
+/* until the image has decoded the city is only the placeholder, the brand chip and the view switch */
+.city.loading .city-world, .city.loading .city-tools, .city.loading .city-hint, .city.loading .city-sites,
+.city.loading .city-keys, .city.loading .site-label { visibility: hidden; }
+/* then the real image, with its dots, sprites and hint, fades in over the placeholder (opacity only) */
+@keyframes city-reveal { from { opacity: 0; } }
+.city.revealing .city-world, .city.revealing .city-tools, .city.revealing .city-hint { animation: city-reveal .7s ease-out; }
 
 /* ── view switch (City / Text / Agent) ─────────────────────── */
 .view-switch { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; gap: 2px; padding: 3px;

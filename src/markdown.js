@@ -2,7 +2,7 @@
 // headings, paragraphs, blockquotes, "-" lists (nested by two-space indents), **bold**, *italic*, `code`, [links](url).
 // Escapes everything first, and only allows http(s), mailto and relative link targets.
 
-const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+export const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 // Relative paths are allowed; anything with a scheme must be http(s) or mailto.
 const safeHref = (h) => (!/^[a-z][a-z0-9+.-]*:/i.test(h) || /^(https?|mailto):/i.test(h) ? h : '#');
 export const slug = (s) => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');

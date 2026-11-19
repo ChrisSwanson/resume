@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Loading screen: the City view no longer flashes the Text view first. An inline boot script picks the view before first paint (no-JS still gets Text), and a ~1 KB pre-blurred placeholder of the city, framed exactly like the real image, shows from the first paint with a "Loading the city…" pill. The hero image is preloaded at boot and fades in over the blur; dots, sprites and tools follow it. Sprite atlases wait for the hero instead of competing with it.
+- Landmark dots sit exactly at the red marker's tip and pulse: a solid dot in the company's colour with a soft glow and an expanding ring, staggered per site (a still glow under reduced motion). Each dot has its own pointer target above the buildings, so overlapping buildings open the right company.
+- The view switch shows City as pressed from the first paint.
+- Fixes: the pointer leaving the window clears the hover label; turning a phone while the city loads waits for the new frame's image.
+- Dev only: loading-screen tests hold the hero image for real while checking the loading state.
+
 ## 0.2.0
 
 - City view performance: panning no longer reallocates canvases, re-blurs shadows or rebuilds caches (per pan event: 6.7 canvas reallocations and 4.9 shadow blurs → under 0.1); camera input is applied once per frame; sprites paint at 30 Hz with the simulation unchanged; sprite canvases cap at 1.5x density. Idle main-thread time at 1440x900@2x dropped from about 461 to 183 ms/s in headless Chromium.

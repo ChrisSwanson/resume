@@ -1,14 +1,16 @@
 // Generates the plain formats from content.js:
-//   resume.md, resume.json, llms.txt, and two marked blocks in index.html
-//   (static text-view HTML and schema.org JSON-LD), so the page is readable without JS.
+//   resume.md, resume.json, llms.txt, and marked blocks in index.html
+//   (static text-view HTML, schema.org JSON-LD, the brand chip, and the City boot script with the
+//   inline placeholders), so the page is readable without JS.
 // `--check` writes nothing and exits 1 if any output is stale.
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { PROFILE, COMPANIES } from '../content.js';
 import { toMarkdown, toJSON, toLlmsTxt, toJSONLD } from '../src/format.js';
-import { markdownToHtml } from '../src/markdown.js';
+import { markdownToHtml, esc } from '../src/markdown.js';
 import { agentTools } from '../src/agent-tools.js';
+import { bootScript, placeholderCss } from '../src/hero/boot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const check = process.argv.includes('--check');
@@ -26,6 +28,10 @@ function replaceBlock(html, name, body) {
 let html = await readFile(join(root, 'index.html'), 'utf8');
 html = replaceBlock(html, 'jsonld', `  <script type="application/ld+json">\n${JSON.stringify(toJSONLD(PROFILE, COMPANIES), null, 2).replace(/</g, '\\u003c')}\n  </script>`);
 html = replaceBlock(html, 'html', markdownToHtml(md));
+html = replaceBlock(html, 'brand', `      <span class="brand-name" data-bind="name">${esc(PROFILE.name)}</span>\n      <span class="brand-title" data-bind="title">${esc(PROFILE.title)}</span>`);
+// the City view's boot: the boot-view script and the blurred placeholders inline (no extra request)
+const dataUri = async (name) => `data:image/webp;base64,${(await readFile(join(root, `assets/hero/placeholder-${name}.webp`))).toString('base64')}`;
+html = replaceBlock(html, 'boot', `  <script>\n${bootScript()}\n  </script>\n  <style>\n${placeholderCss({ master: await dataUri('master'), portrait: await dataUri('portrait') })}\n  </style>`);
 
 const outputs = {
   'resume.md': md,

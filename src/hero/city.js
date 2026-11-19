@@ -8,23 +8,16 @@
 // never forces a layout in the middle of a frame.
 import { fillPreview, fillDrawer } from './card.js';
 import { createSprites } from './sprites.js';
-import { landmarkPoint } from './landmarks.js';
+import { BASE, FRAMES, PORTRAIT_QUERY, frameScale, srcsetOf } from './frames.js';
 
-const BASE = 'assets/hero/';
 const NS = 'http://www.w3.org/2000/svg';
-const FRAMES = {
-  // the resting view of the master is its centre 1440x960; the portrait is shown whole (plus a
-  // little overscan so it can still pan)
-  // images: the WebPs by width (1x and 2x of the frame), then the JPEG fallback (1x only)
-  master: { view: [1440, 960], images: [['master-2400', 2400], ['master-4800', 4800]], jpeg: 'master-2400' },
-  portrait: { view: [780, 1688], over: 1.08, images: [['portrait-780', 780], ['portrait-1560', 1560]], jpeg: 'portrait-780' },
-};
-const portraitQuery = matchMedia('(max-aspect-ratio: 3/4)');
+const portraitQuery = matchMedia(PORTRAIT_QUERY);
 const phoneQuery = matchMedia('(max-width: 640px)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const SNAP_MS = 350;
 const DOT_PX = 11;                       // a landmark dot's on-screen diameter, CSS px, at every zoom
-const DOT_MARGIN = 10;                   // image px of clearance from the silhouette's edge
+const MARKER_LIFT = 6;                  // image px the marker's tip (and so the dot) floats above the sign's top centre
+const HIT_PAD = 5;                      // CSS px of transparent hit area around a dot
 // held-key movement, in CSS px/s: top speed, and how fast velocity approaches its target (1/s)
 const MOVE = { speed: 900, accel: 9, friction: 7 };
 const MOVE_KEYS = {
@@ -60,7 +53,10 @@ export function createCity(root, { profile, companies, theme }) {
   marker.hidden = true;
   marker.setAttribute('aria-hidden', 'true');
   marker.innerHTML = '<span class="cm-bob"></span>';
-  world.append(marker);
+  const dotsLayer = document.createElement('div');       // the visible dots: HTML, so the pulse is compositor-only
+  dotsLayer.className = 'city-dots';
+  dotsLayer.setAttribute('aria-hidden', 'true');
+  world.append(dotsLayer, marker);
 
   const records = new Map();
   for (const c of companies) records.set(c.id, { kind: 'company', data: c });
@@ -71,6 +67,7 @@ export function createCity(root, { profile, companies, theme }) {
   let sites = [];                        // ids in list order (number keys 1-9)
 
   let scene, regions, frameName, frame, sprites;
+  let revealed = false, heroDecoded = null;   // revealed: the hero image has decoded and the loading screen is gone
   let s = 1, cx = 0, cy = 0, vw = 0, vh = 0;
   let active = false, hovered = null, listed = null, selected = null, opened = null;
 
@@ -83,7 +80,34 @@ export function createCity(root, { profile, companies, theme }) {
     if (scene.palette) root.style.setProperty('--chip-bg', scene.palette.signPanel);   // render/palette.py CHROME
     root.style.setProperty('--title', theme?.titleColor ?? '#2b59c3');
     setFrame(portraitQuery.matches ? 'portrait' : 'master');
+    return heroReady();                      // rejects if the image fails: the app falls back to the Text view
+  }).then(reveal);
+
+  // the loading screen (index.html, styles.css): a blurred placeholder framed like the image, under
+  // the hidden city. Once the hero image has decoded, the sprites and the marker start loading (not
+  // before: they would compete with it for bandwidth) and the city fades in over the placeholder.
+  function reveal() {
+    revealed = true;
+    makeSprites();
     loadMarker();
+    apply(true);                             // hands the sprites the current view (setFrame laid it out)
+    const placeholder = root.querySelector('.city-ph');
+    let timer;
+    const done = () => { clearTimeout(timer); root.classList.remove('revealing'); placeholder?.remove(); };
+    if (!reducedMotion.matches) {
+      root.classList.add('revealing');
+      world.addEventListener('animationend', (e) => { if (e.target === world) done(); }, { once: true });
+      timer = setTimeout(done, 1000);        // no animation runs while the view is hidden
+    } else done();
+    root.classList.remove('loading');
+  }
+  // the current frame's image: after a frame switch before it decoded (a phone turned while loading),
+  // wait for the new frame's image, not the replaced one (whether that one loaded or failed)
+  const heroReady = () => { const p = heroDecoded, next = () => (p === heroDecoded ? p : heroReady()); return p.then(next, next); };
+  const whenDecoded = (img) => new Promise((resolve, reject) => {
+    const decode = () => img.decode().then(resolve, reject);
+    img.addEventListener('load', decode, { once: true });
+    img.addEventListener('error', () => reject(new Error('hero image failed to load')), { once: true });
   });
 
   // the 3D marker is a rendered sprite (render/sprites.py, assets/hero/sprites/marker.*); until
@@ -116,30 +140,37 @@ export function createCity(root, { profile, companies, theme }) {
     picture.replaceChildren();
     const src = document.createElement('source');
     src.type = 'image/webp';
-    src.srcset = frame.images.map(([f, w]) => `${BASE}${f}.webp ${w}w`).join(', ');
+    src.srcset = srcsetOf(frame);
     const img = document.createElement('img');
     img.src = `${BASE}${frame.jpeg}.jpg`;
     img.alt = `A miniature city in which the name ${profile.name} stands as two lines of buildings, with the buildings of each employer carrying its logo.`;
     img.width = W; img.height = H; img.decoding = 'async'; img.draggable = false;
     img.fetchPriority = 'high';
     picture.append(src, img);
+    if (!revealed) heroDecoded = whenDecoded(img);
     buildRegions(W, H);
     buildList();
-    sprites?.stop();
-    sprites = createSprites(layers, scene, name, theme, { avoid: [...Object.values(regions[name].sites).map((r) => r.bbox), ...(scene.titleBoxes?.[name] ?? [])], base: BASE });
+    if (revealed) makeSprites();
     cx = W / 2; cy = H / 2; pdx = pdy = 0;
     closeDrawer(false);
     showPreview(null);
     layout();
+  }
+
+  function makeSprites() {
+    sprites?.stop();
+    sprites = createSprites(layers, scene, frameName, theme, { avoid: [...Object.values(regions[frameName].sites).map((r) => r.bbox), ...(scene.titleBoxes?.[frameName] ?? [])], base: BASE });
     if (active) sprites.start();
   }
 
   function buildRegions(W, H) {
     regionsSvg.replaceChildren();
+    dotsLayer.replaceChildren();
     regionsSvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     const traced = regions[frameName].sites;
     const signs = scene.signBoxes?.[frameName] ?? {};
     sites = [];
+    const tips = [];
     for (const id of order) {
       const reg = traced[id], rec = records.get(id);
       if (!reg || !rec) continue;
@@ -156,23 +187,34 @@ export function createCity(root, { profile, companies, theme }) {
       const path = document.createElementNS(NS, 'path');
       path.setAttribute('d', reg.polys.map((p) => 'M' + p.join(' ').replace(/(\S+ \S+) /g, '$1 L') + 'Z').join(''));
       a.append(path);
-      rec.dot = landmarkPoint(reg, sb, DOT_MARGIN);
-      rec.dotEl = null;
-      if (rec.dot) {
-        // decorative: the link itself carries the name; r is set from the world scale in layout()
-        const c = document.createElementNS(NS, 'circle');
-        c.setAttribute('class', 'site-dot');
-        c.setAttribute('aria-hidden', 'true');
-        c.setAttribute('cx', rec.dot[0]); c.setAttribute('cy', rec.dot[1]);
-        c.classList.toggle('is-hidden', id === selected);
-        a.append(rec.dotEl = c);
-      }
-      regionsSvg.append(a);
-      rec.bbox = reg.bbox;
       // the marker and snaps aim at the sign (the top centre of the logo), else the region's top
       rec.anchor = sb ? [(sb[0] + sb[2]) / 2, sb[1]] : [(reg.bbox[0] + reg.bbox[2]) / 2, reg.bbox[1]];
+      rec.tip = tipOf(rec);
+      // a pointer-only twin, drawn after every building, carries a transparent hit circle at the dot, so a dot
+      // that lies over a neighbour's silhouette still opens its own site. A plain group, not a link: it is
+      // aria-hidden, so it must never take focus; the building link is the one in the Tab order
+      const tip = document.createElementNS(NS, 'g');
+      tip.setAttribute('class', 'site-tip');
+      tip.setAttribute('aria-hidden', 'true');
+      tip.dataset.id = id;
+      const hit = document.createElementNS(NS, 'circle');
+      hit.setAttribute('class', 'site-hit');
+      hit.setAttribute('cx', rec.tip[0]); hit.setAttribute('cy', rec.tip[1]);
+      tip.append(hit);
+      tips.push(tip);
+      const el = document.createElement('i');
+      el.className = 'site-dot';
+      el.dataset.id = id;
+      el.style.setProperty('--i', sites.length - 1);
+      if (d.accent) el.style.setProperty('--brand', d.accent);
+      el.classList.toggle('is-hidden', id === selected);
+      el.innerHTML = '<span class="sd-ring"></span><span class="sd-core"></span>';
+      dotsLayer.append(rec.dotEl = el);
+      regionsSvg.append(a);
+      rec.bbox = reg.bbox;
       rec.focus = sb ? [(sb[0] + sb[2]) / 2, (sb[1] + sb[3]) / 2] : [(reg.bbox[0] + reg.bbox[2]) / 2, (reg.bbox[1] + reg.bbox[3]) / 2];
     }
+    regionsSvg.append(...tips);
   }
 
   function buildList() {
@@ -198,8 +240,7 @@ export function createCity(root, { profile, companies, theme }) {
     const [W, H] = scene.frames[frameName].res;
     vw = viewport.clientWidth; vh = viewport.clientHeight;          // the only layout reads
     setInsets();
-    s = Math.max(vw / frame.view[0], vh / frame.view[1]) * (frame.over ?? 1);
-    s = Math.max(s, vw / W, vh / H);
+    s = frameScale(frame, vw, vh);
     world.style.width = `${W * s}px`;
     world.style.height = `${H * s}px`;
     // sizes in CSS px: the browser takes the 2x WebP on DPR 2 screens
@@ -208,8 +249,9 @@ export function createCity(root, { profile, companies, theme }) {
     const source = world.querySelector('source');
     if (source) source.sizes = sizes;
     placeMarker();
-    const r = (DOT_PX / 2 / s).toFixed(2);   // constant on-screen size whatever the world scale
-    for (const c of regionsSvg.querySelectorAll('.site-dot')) c.setAttribute('r', r);
+    const r = ((DOT_PX / 2 + HIT_PAD) / s).toFixed(2);   // constant on-screen size whatever the world scale
+    for (const c of regionsSvg.querySelectorAll('.site-hit')) c.setAttribute('r', r);
+    for (const rec of records.values()) if (rec.dotEl) rec.dotEl.style.transform = `translate3d(${(rec.tip[0] * s).toFixed(1)}px, ${(rec.tip[1] * s).toFixed(1)}px, 0)`;
     apply(true);                            // the viewport or scale may have changed under the same camera
   }
   /** clamp a camera centre so the image covers what is visible (the drawer may cover the image's
@@ -419,19 +461,19 @@ export function createCity(root, { profile, companies, theme }) {
   });
 
   // ── regions: hover, focus, click ─────────────────────────────────────────
-  const siteOf = (e) => e.target.closest?.('a.site');
+  const siteOf = (el) => el?.closest?.('a.site, .site-tip');
   regionsSvg.addEventListener('pointerover', (e) => {
-    const a = siteOf(e);
+    const a = siteOf(e.target);
     if (a && e.pointerType !== 'touch' && !drag?.moved) hover(a.dataset.id);
   });
   regionsSvg.addEventListener('pointerout', (e) => {
-    const a = siteOf(e);
-    if (a && !a.contains(e.relatedTarget)) hover(null);
+    const a = siteOf(e.target);
+    if (a && siteOf(e.relatedTarget)?.dataset.id !== a.dataset.id) hover(null);   // building link to its own dot is no exit
   });
   let quietFocus = false;                 // focus handed back to a site by closing the drawer: no preview
-  const focusSite = (id) => { quietFocus = true; regionsSvg.querySelector(`[data-id="${id}"]`)?.focus({ preventScroll: true }); quietFocus = false; };
+  const focusSite = (id) => { quietFocus = true; regionsSvg.querySelector(`a.site[data-id="${id}"]`)?.focus({ preventScroll: true }); quietFocus = false; };
   regionsSvg.addEventListener('focusin', (e) => {
-    const a = siteOf(e);
+    const a = siteOf(e.target);
     if (!a || quietFocus) return;
     select(a.dataset.id);
     // keyboard focus brings the site into view and previews it; focus from a tap or click does not
@@ -439,11 +481,11 @@ export function createCity(root, { profile, companies, theme }) {
   });
   regionsSvg.addEventListener('focusout', () => hover(null));
   regionsSvg.addEventListener('keydown', (e) => {          // SVG links do not activate on Enter/Space by themselves
-    const a = siteOf(e);
+    const a = siteOf(e.target);
     if (a && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDrawer(a.dataset.id); }
   });
   regionsSvg.addEventListener('click', (e) => {
-    const a = siteOf(e);
+    const a = siteOf(e.target);
     if (!a) return;
     e.preventDefault();
     if (dragged) { dragged = false; return; }
@@ -463,15 +505,17 @@ export function createCity(root, { profile, companies, theme }) {
   function mark() {
     for (const a of regionsSvg.querySelectorAll('a.site')) {
       const id = a.dataset.id;
-      a.classList.toggle('on', id === hovered || id === listed || id === opened);
+      const on = id === hovered || id === listed || id === opened;
+      a.classList.toggle('on', on);
+      records.get(id)?.dotEl?.classList.toggle('is-on', on);
     }
     showLabel(opened ? null : hovered);
   }
-  // ── landmark label: a name pill just above the hovered or focused site's dot ──
+  // ── landmark label: a name pill just above the hovered or focused site's dot (below it when the marker is there) ──
   let labelId = null, lw = 0, lh = 0;
   function showLabel(id) {
     const rec = id && records.get(id);
-    if (!rec?.dot) { labelId = null; label.classList.remove('show'); return; }
+    if (!rec?.tip) { labelId = null; label.classList.remove('show'); return; }
     if (id !== labelId) {
       labelId = id;
       label.querySelector('span').textContent = rec.data.name;
@@ -483,11 +527,11 @@ export function createCity(root, { profile, companies, theme }) {
   }
   function placeLabel() {
     const rec = labelId && records.get(labelId);
-    if (!rec?.dot) return;
-    const [dx, dy] = toScreen(rec.dot[0], rec.dot[1]);
-    // above the (hover-grown) dot, or below it where the top edge leaves no room
+    if (!rec?.tip) return;
+    const [dx, dy] = toScreen(rec.tip[0], rec.tip[1]);
+    // above the (hover-grown) dot, or below it where the top edge leaves no room or the red marker stands there
     const m = 8, gap = DOT_PX / 2 * 1.3 + 6, x = Math.min(Math.max(dx - lw / 2, m), vw - lw - m);
-    const up = dy - gap - lh, y = Math.min(up >= m ? up : dy + gap, vh - lh - m);
+    const up = dy - gap - lh, y = Math.min(up >= m && labelId !== selected ? up : dy + gap, vh - lh - m);
     label.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
   }
   const setDotHidden = (id, on) => records.get(id)?.dotEl?.classList.toggle('is-hidden', on);
@@ -535,14 +579,16 @@ export function createCity(root, { profile, companies, theme }) {
     for (const b of sitesList.querySelectorAll('button')) b.classList.toggle('selected', b.dataset.id === id);
     placeMarker();
   }
+  /** where the red marker's tip points, and so where the site's dot sits (image px) */
+  function tipOf(rec) { return [rec.anchor[0], rec.anchor[1] - MARKER_LIFT]; }
   function placeMarker() {
     const rec = selected && records.get(selected);
     if (!rec?.anchor) return;
     const sprite = marker.classList.contains('sprite');
     const w = sprite ? +marker.dataset.w : 20, h = sprite ? +marker.dataset.h : 24;
     const ax = sprite ? +marker.dataset.ax : 10, ay = sprite ? +marker.dataset.ay : 24;
-    // the anchor (the sprite's tip) sits a little above the sign, in frame px scaled to CSS px
-    const left = (rec.anchor[0] - ax) * s, top = (rec.anchor[1] - 6 - ay) * s;
+    // the sprite's tip sits at the site's tip, in frame px scaled to CSS px
+    const left = (rec.tip[0] - ax) * s, top = (rec.tip[1] - ay) * s;
     marker.style.transform = `translate3d(${left.toFixed(1)}px, ${top.toFixed(1)}px, 0)`;
     marker.style.width = `${(w * s).toFixed(1)}px`;
     marker.style.height = `${(h * s).toFixed(1)}px`;

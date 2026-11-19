@@ -41,14 +41,7 @@ export const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor:
  * Returns { context, page }.
  */
 export async function openCity(browser, baseUrl, opts = DESKTOP, { instrument = false, setup } = {}) {
-  const context = await browser.newContext(opts);
-  if (instrument) await context.addInitScript(INSTRUMENT);
-  await setup?.(context);                               // e.g. context.route() before the page loads
-  const page = await context.newPage();
-  // page.errors: uncaught exceptions and console errors since the page opened
-  page.errors = [];
-  page.on('pageerror', (e) => page.errors.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error') page.errors.push(m.text()); });
+  const { context, page } = await newPage(browser, opts, { instrument, setup });
   await page.goto(baseUrl);
   await page.waitForSelector('#view-3d a.site', { state: 'attached' });
   await page.waitForFunction(() => {
@@ -59,6 +52,19 @@ export async function openCity(browser, baseUrl, opts = DESKTOP, { instrument = 
   // 500 ms), not a fixed time, which a loaded machine overruns; then a frame paints with them
   await page.waitForLoadState('networkidle');
   await frames(page, 2);
+  return { context, page };
+}
+
+/** A new context and page, not yet navigated. setup(context) runs first (e.g. context.route());
+ * page.errors collects uncaught exceptions and console errors from then on. Returns { context, page }. */
+export async function newPage(browser, opts = DESKTOP, { instrument = false, setup } = {}) {
+  const context = await browser.newContext(opts);
+  if (instrument) await context.addInitScript(INSTRUMENT);
+  await setup?.(context);
+  const page = await context.newPage();
+  page.errors = [];
+  page.on('pageerror', (e) => page.errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') page.errors.push(m.text()); });
   return { context, page };
 }
 

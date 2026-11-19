@@ -3,11 +3,14 @@
 //   npm run hero -- --samples 64       # faster draft renders
 //   npm run hero -- --skip-render      # reuse render/out/*.png (re-encode and re-trace only)
 //   npm run hero -- --no-sprites       # leave the moving sprites (npm run sprites) alone
+//   npm run hero -- --placeholders     # only remake the tiny blurred placeholders (assets/hero/placeholder-*.webp)
+//                                      # from the shipped 1x WebPs, no render needed; then `npm run build`
 // Uses the official Blender 4.2 LTS (with OpenImageDenoise) when it is installed at
 // ~/.local/opt/blender-4.2.23, else `blender` on PATH; BLENDER=/path/to/blender overrides both.
 // Intermediates go to render/out/ (git-ignored); outputs go to assets/hero/:
 //   master-{4800,2400}.webp + master-2400.jpg      the 4800x3200 master, for DPR 2 and 1
 //   portrait-{1560,780}.webp + portrait-780.jpg    the portrait, the same way
+//   placeholder-{master,portrait}.webp   ~1 KB blurred stand-ins that index.html inlines (scripts/build.mjs)
 // Image coordinates everywhere (regions, scene.json, masks) are the 1x frame: 2400x1600, 780x1688.
 //   regions.json   hover polygons per site, in image pixels, for each frame
 //   scene.json     camera, frames, traffic lanes, site positions, palette (for the sprites)
@@ -44,6 +47,14 @@ function run(cmd, args) {
   if (r.status !== 0) { console.error(`${cmd} failed (${r.status})`); process.exit(1); }
   console.log(`  (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
 }
+const PLACEHOLDER = { master: [48, 55], portrait: [40, 50] };   // width px, WebP quality
+const placeholder = (frame, input) => run(blender, ['-b', '--factory-startup', '-P', 'render/encode.py', '--',
+  '--in', input, '--placeholder-out', `assets/hero/placeholder-${frame}.webp`,
+  '--placeholder-width', String(PLACEHOLDER[frame][0]), '--placeholder-q', String(PLACEHOLDER[frame][1])]);
+if (process.argv.includes('--placeholders')) {
+  for (const [frame, input] of [['master', 'assets/hero/master-2400.webp'], ['portrait', 'assets/hero/portrait-780.webp']]) placeholder(frame, input);
+  process.exit(0);
+}
 const hero = (...a) => run(blender, ['-b', '--factory-startup', '-P', 'render/hero.py', '--', ...a]);
 
 for (const frame of ['master', 'portrait']) {
@@ -69,6 +80,7 @@ const encode = (name, webp, jpeg, q = 88) => run(blender, ['-b', '--factory-star
 encode('master', '4800', 'none', 80);      // the 2x master at q80 keeps it near 1.5 MB (q88 is 2.1 MB)
 encode('master', '2400', '2400');
 encode('portrait', '1560,780', '780');
+for (const frame of ['master', 'portrait']) placeholder(frame, `render/out/${frame}.png`);
 
 // one scene.json: the facts are the same for both frames except the projection checks
 const scene = JSON.parse(readFileSync(join(out, 'scene-master.json'), 'utf8'));
