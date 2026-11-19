@@ -11,11 +11,14 @@
 // direction of travel (with a little hysteresis); images are never rotated, except a balloon's sway.
 //
 // Motion is random and loops forever on one requestAnimationFrame clock, which runs only while the
-// City view is shown. Cars follow the car ahead with a gap and change lanes (ramps) only into a
+// City view is shown. The simulation steps every frame but the canvases repaint at 30 Hz (pacing.js),
+// plus once, at once, whenever the camera moves. Cars follow the car ahead with a gap and change lanes (ramps) only into a
 // gap, at exact stations, easing out any offset. With prefers-reduced-motion one still is drawn.
 import { projection } from './projection.js';
+import { createPacer } from './pacing.js';
 
 const RAD = Math.PI / 180;
+const PAINT_HZ = 30;                       // idle repaint rate; the simulation still steps every frame
 let modelNo = 0;                           // numbers models for cache keys
 function seeded(seed) {                    // mulberry32, for the reduced-motion still
   return () => {
@@ -118,7 +121,8 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
   let qx = 0, qy = 0;
   const proj = (x, y, z) => { qx = ox + AX * x + BX * y + CX * z; qy = oy + AY * x + BY * y + CY * z; };
 
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+  let reduced = motionQuery.matches;
   const rnd = reduced ? seeded(7) : Math.random;
   const range = (a, b) => a + (b - a) * rnd();
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
@@ -142,7 +146,7 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
     // the car layers are masked by the road pass inside the canvas (a CSS mask on a canvas that
     // changes every frame is slow in Firefox)
     const mask = kind === 'street' || kind === 'freeway' ? image(`${base}roads-${frameName}-${kind}.png`, () => redraw()) : null;
-    L[kind] = { canvas, ctx: canvas.getContext('2d'), rects: new Float32Array(4 * 512), n: 0, full: true, mask, cut: null };
+    L[kind] = { canvas, ctx: canvas.getContext('2d'), rects: new Float32Array(4 * 512), n: 0, full: true, mask, cut: null, cutOk: false };
   }
   const canFilter = typeof L.ground.ctx.filter === 'string';
   // soft shadows are blurred once per (sprite, heading, blur, zoom) into a small canvas and reused:
@@ -151,19 +155,26 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
 
   // the part of the image the viewer can see (image px), kept current by the City view;
   // g scales flyers up when the view is small (the phone frame) so they stay legible
+  // Device pixels per CSS pixel for the canvases, the view's D and the atlas choice, capped: past
+  // 1.5 the extra pixels cost fill and memory but the sprites are small, moving and soft.
+  const DENSITY_CAP = 1.5;
+  const density = () => Math.min(window.devicePixelRatio || 1, DENSITY_CAP);
+  let laidOutAt = 0;                                          // the density the canvases were last sized for (0: no view yet)
   const view = { x0: 0, y0: 0, x1: W, y1: H, s: 1, g: 1, D: 1 };
   const inView = (px, py, m) => px > view.x0 - m && px < view.x1 + m && py > view.y0 - m && py < view.y1 + m;
   function layout() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = density();
     const cw = (view.x1 - view.x0) * view.s, ch = (view.y1 - view.y0) * view.s;
+    laidOutAt = dpr;
     const bw = Math.max(1, Math.round(cw * dpr)), bh = Math.max(1, Math.round(ch * dpr));
     view.D = bw / Math.max(1e-6, view.x1 - view.x0);         // canvas px per image px
     for (const l of Object.values(L)) {
-      const c = l.canvas, st = c.style;
-      if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
-      st.width = `${cw}px`; st.height = `${ch}px`;
-      st.transform = `translate(${view.x0 * view.s}px, ${view.y0 * view.s}px)`;
-      l.full = true; l.cutAt = null;
+      const c = l.canvas;
+      if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }   // assigning reallocates, even to the same size
+      c.style.width = `${cw}px`; c.style.height = `${ch}px`;
+      c.style.transform = `translate(${view.x0 * view.s}px, ${view.y0 * view.s}px)`;
+      l.full = true;                                    // the drawn rectangles are in the old origin's pixels
+      l.cutOk = false;                                  // and the road cut in the old origin and scale
     }
     if (S) chooseFiles();
   }
@@ -172,8 +183,7 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
   let S = null;                                               // sprites.json
   const atl = {};                                             // name -> { meta, img, f, u }
   function chooseFiles() {
-    const dpr = window.devicePixelRatio || 1;
-    soft.clear();
+    const dpr = density();
     for (const [name, meta] of Object.entries(S.atlases)) {
       const scale = name === 'air' ? view.g : 1;
       const [r, top] = fileFor(meta, P.k * view.s * dpr * scale);
@@ -182,7 +192,7 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
       if (url === a.want) continue;
       a.want = url;
       const im = image(url, () => { if (a.want === url) { a.img = im; a.f = r / top; soft.clear(); redraw(); } });
-      if (loaded(im) || !a.img) { a.img = im; a.f = r / top; }
+      if (loaded(im) || !a.img) { a.img = im; a.f = r / top; soft.clear(); }   // shadows are blurred from this atlas
     }
   }
   // the screen axis of each atlas column, per model, for choosing a heading from a projected
@@ -436,19 +446,27 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
     for (const l of [L.street, L.freeway]) {
       if (!l.n) continue;
       const ctx = l.ctx, r = l.rects, cv = l.canvas;
-      if (l.cutAt !== cv) {
-        l.cut ??= document.createElement('canvas');
-        l.cut.width = cv.width; l.cut.height = cv.height;
-        const g = l.cut.getContext('2d');
+      if (!l.cutOk) {                                          // once per layout: the cut depends on the view's origin and scale
+        const cut = l.cut ??= document.createElement('canvas');
+        if (cut.width !== cv.width || cut.height !== cv.height) { cut.width = cv.width; cut.height = cv.height; }
+        const g = cut.getContext('2d');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, cut.width, cut.height);
         g.setTransform(view.D, 0, 0, view.D, -view.x0 * view.D, -view.y0 * view.D);
         g.drawImage(l.mask, 0, 0, W, H);
-        l.cutAt = cv;
+        l.cutOk = true;
       }
+      // clip to the boxes rounded out to whole canvas pixels: an antialiased clip edge would only
+      // partly apply the mask there, leaving a faint pixel of car off the road
+      const D = view.D, ox = view.x0, oy = view.y0;
       ctx.save();
-      ctx.beginPath();
-      for (let i = 0; i < l.n * 4; i += 4) ctx.rect(r[i], r[i + 1], r[i + 2], r[i + 3]);
-      ctx.clip();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.beginPath();
+      for (let i = 0; i < l.n * 4; i += 4) {
+        const x = Math.floor((r[i] - ox) * D), y = Math.floor((r[i + 1] - oy) * D);
+        ctx.rect(x, y, Math.ceil((r[i] + r[i + 2] - ox) * D) - x, Math.ceil((r[i + 1] + r[i + 3] - oy) * D) - y);
+      }
+      ctx.clip();
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'destination-in';
       ctx.drawImage(l.cut, 0, 0);
@@ -666,8 +684,10 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
     stepHeli(dt, t);
     for (const b of balloons) stepBalloon(b, dt, t);
   }
+  let paints = 0;
   function draw() {
     if (!S) return;
+    paints++;
     for (const l of Object.values(L)) begin(l);
     drawCars();
     drawPuffs();
@@ -676,14 +696,16 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
     for (const b of balloons) drawBalloon(b, t);
     for (const l of Object.values(L)) l.ctx.globalAlpha = 1;
   }
-  function redraw() { if (!running) draw(); }
+  function redraw() { if (wanted && !running) draw(); }     // a still scene repaints late loads; a stopped one ignores them
+  const pacer = createPacer(PAINT_HZ);
   const tick = (now) => {
     // a stalled tab does not jump ahead, and frame-to-frame jitter is smoothed
     const raw = Math.min(0.05, Math.max(0, (now - last) / 1000));
     last = now;
     dtS += (raw - dtS) * 0.3;
     simulate(dtS);
-    draw();
+    // simulate every frame, paint at the pacer's rate (a setView paint this frame moved its deadline on)
+    if (pacer.frame(now)) draw();
     raf = requestAnimationFrame(tick);
   };
   function first() {
@@ -697,8 +719,25 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
   function run() {
     first();
     if (!S || running || reduced || !wanted) return;
-    running = true; last = performance.now();
+    running = true; last = performance.now(); pacer.reset();
     raf = requestAnimationFrame(tick);
+  }
+  // a change of device pixel ratio (zoom, another monitor) resizes the canvases even if the view did not move
+  let dprQuery = null;
+  function densityChanged() {
+    watchDensity();
+    if (laidOutAt && density() !== laidOutAt) { layout(); if (placed) draw(); }
+  }
+  function watchDensity() {
+    dprQuery?.removeEventListener('change', densityChanged);
+    dprQuery = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    dprQuery.addEventListener('change', densityChanged);
+  }
+  function halt() { running = false; cancelAnimationFrame(raf); raf = 0; }
+  function motionChanged() {
+    reduced = motionQuery.matches;
+    if (reduced) { halt(); if (placed) draw(); }             // leave a still frame
+    else run();                                              // resumes on a fresh clock
   }
   loadIndex(base).then((index) => {
     if (!index) return;
@@ -713,6 +752,7 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
     if (wanted) run();
   });
   // for tests and debugging: where everything is (image px), on the air canvas element
+  L.air.canvas.spritePaints = () => paints;
   L.air.canvas.spriteState = () => (draw(), {                 // as on screen now
     cars: lanes.flatMap((lane, li) => lane.cars.map((c) => {
       const q = lane.path.at(Math.min(c.s, lane.path.length));
@@ -732,14 +772,26 @@ export function createSprites(layers, scene, frameName, theme, { avoid = [], bas
   return {
     /** The visible part of the image (image px) and the current CSS px per image px. */
     setView(x0, y0, x1, y1, s) {
+      if (density() === laidOutAt && x0 === view.x0 && y0 === view.y0 && x1 === view.x1 && y1 === view.y1 && s === view.s) return;
       Object.assign(view, { x0, y0, x1, y1, s, g: Math.max(1, 1.5 / (P.k * s)) });
       layout();
-      if (placed) draw();                                     // in step with the pan, before paint
+      if (placed) {                                           // in step with the pan, before paint
+        draw();
+        if (running) pacer.painted(performance.now());   // later than this frame's timestamp: its tick skips
+      }
     },
-    start() { wanted = true; run(); },
+    start() {
+      wanted = true;
+      motionQuery.addEventListener('change', motionChanged);
+      watchDensity();
+      reduced = motionQuery.matches;
+      run();
+    },
     stop() {
-      wanted = running = false;
-      cancelAnimationFrame(raf);
+      wanted = false;
+      motionQuery.removeEventListener('change', motionChanged);
+      dprQuery?.removeEventListener('change', densityChanged); dprQuery = null;
+      halt();
     },
   };
 }

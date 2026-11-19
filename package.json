@@ -1,6 +1,6 @@
 {
   "name": "valley-resume",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Interactive 3D resume template with Text and Agent (WebMCP) views.",
   "type": "module",
@@ -8,9 +8,14 @@
     "build": "node scripts/build.mjs",
     "check": "node scripts/build.mjs --check",
     "serve": "node scripts/serve.mjs",
-    "test": "node scripts/build.mjs --check && node scripts/test.mjs",
+    "test": "node scripts/build.mjs --check && node scripts/test.mjs && node --test 'tests/unit/*.test.mjs'",
     "hero": "node scripts/hero.mjs",
-    "sprites": "node scripts/sprites.mjs"
+    "sprites": "node scripts/sprites.mjs",
+    "test:browser": "node --test --test-concurrency=1 'tests/browser/*.test.mjs'",
+    "perf": "node scripts/perf.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "1.65.1"
+  }
 }

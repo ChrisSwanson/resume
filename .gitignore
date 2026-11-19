@@ -9,3 +9,4 @@ render/out/
 # owner's private source resume (never commit)
 /Chris Swanson Resume.md
 .playwright-mcp/
+test-results/

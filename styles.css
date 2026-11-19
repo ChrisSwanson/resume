@@ -38,8 +38,8 @@ button { font: inherit; cursor: pointer; }
 .site.on path { fill: color-mix(in srgb, var(--brand, #fff6d6) 22%, rgba(255, 252, 240, 0.18)); stroke: rgba(255, 255, 255, 0.95); }
 .site:focus-visible path { fill: color-mix(in srgb, var(--brand, #fff6d6) 22%, rgba(255, 252, 240, 0.18)); stroke: var(--title); stroke-width: 3.5; }
 
-/* ── planar chrome: one flat panel style for the name chip, view switch, hint, footer, tools and panels ── */
-.chip, .view-switch, .city-hint, .city-foot, .brand, .city-card, .city-drawer, .tool-btn, .city-sites, .city-keys {
+/* ── planar chrome: one flat panel style for the name chip, view switch, hint, tools and panels ── */
+.chip, .view-switch, .city-hint, .brand, .city-card, .city-drawer, .tool-btn, .city-sites, .city-keys {
   background: var(--chip-bg); color: var(--ink); border: 1.5px solid var(--chip-edge); border-radius: 8px;
   box-shadow: 0 2px 0 var(--chip-edge-soft); }
 :root { --chip-bg: #f7f5ef; --chip-edge: rgba(51, 55, 61, 0.55); --chip-edge-soft: rgba(51, 55, 61, 0.22); }
@@ -71,17 +71,33 @@ button { font: inherit; cursor: pointer; }
 .cc-tags span { font-size: 12px; padding: 2px 8px; border-radius: 4px; background: rgba(51, 55, 61, 0.07); }
 
 /* the drawer: full height on the right; the city stays live beside it */
-.city-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(420px, 92vw); display: flex; flex-direction: column;
+.city-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: var(--drawer-w); display: flex; flex-direction: column;
   border-radius: 0; border-width: 0 0 0 1.5px; box-shadow: -2px 0 0 var(--chip-edge-soft); animation: drawer-in .2s ease-out; }
 @keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } }
 .cd-scroll { flex: 1; overflow: auto; overscroll-behavior: contain; }
 .city-drawer .cc-head { padding: 16px 14px 0 18px; }
-.city-drawer .cc-body { padding: 10px 18px 28px; }
+.city-drawer .cc-body { padding: 10px 18px 28px; max-width: 65ch; }
 .city-drawer .cc-logo { height: 40px; }
 .city-drawer .cc-logo img { height: 36px; }
 .city-drawer .cc-role { font-size: 17px; }
 .cd-handle { display: none; }
-.city.drawer-open .city-tools { right: calc(min(420px, 92vw) + 16px); }
+/* the drawer is a third of the screen; tools and popovers shift left with their buttons */
+:root { --drawer-w: clamp(320px, 33vw, 640px); }
+.city.drawer-open .city-tools, .city.drawer-open .city-sites, .city.drawer-open .city-keys { right: calc(var(--drawer-w) + 16px); }
+
+/* landmark dots (a circle in each a.site; .is-hidden while the red marker is on it) and the one
+   name pill (.site-label, fixed, placed by city.js, .show on hover/focus). No looping animation, ever. */
+.site-dot { fill: #fff; stroke: var(--brand, var(--title)); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: pointer;
+  paint-order: stroke; filter: drop-shadow(0 0 1px rgba(20, 22, 26, .75)) drop-shadow(0 1px 1px rgba(20, 22, 26, .35));
+  transform-box: fill-box; transform-origin: center; transition: transform .12s ease-out, filter .12s ease-out; }
+.site-dot.is-hidden { display: none; }
+.site:hover .site-dot { transform: scale(1.3);
+  filter: brightness(1.25) saturate(1.15) drop-shadow(0 0 1px rgba(20, 22, 26, .85)) drop-shadow(0 1px 2px rgba(20, 22, 26, .4)); }
+.site-label { position: fixed; left: 0; top: 0; z-index: 3; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 7px;
+  border-radius: 999px; background: rgba(28, 31, 36, .92); color: #fff; font-size: 12px; font-weight: 700; line-height: 1.2; white-space: nowrap;
+  pointer-events: none; opacity: 0; transition: opacity .12s ease-out; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+.site-label.show { opacity: 1; }
+.site-label i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--brand, var(--title)); box-shadow: 0 0 0 1px rgba(255, 255, 255, .6); }
 
 /* tools: Sites and the key list */
 .city-tools { position: fixed; top: 16px; right: 16px; z-index: 9; display: flex; gap: 6px; }
@@ -125,18 +141,15 @@ button { font: inherit; cursor: pointer; }
   font-size: 13px; pointer-events: none; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis;
   transition: opacity .35s ease, transform .35s ease; }
 .city-hint.gone { opacity: 0; transform: translate(-50%, 6px); }
-.city-foot { position: fixed; right: 12px; bottom: 10px; z-index: 4; margin: 0; padding: 4px 10px; max-width: calc(100vw - 24px);
-  font-size: 12px; line-height: 1.35; color: var(--ink-soft); pointer-events: none; }
-.city.drawer-open .city-foot, .city.drawer-open .city-hint { display: none; }
+.city.drawer-open .city-hint { display: none; }
 
 @media (max-width: 640px) {
   .brand { display: none; }
   .city-hint { bottom: 56px; }
   .hint-wide { display: none; }
-  .city-foot { left: 12px; right: 12px; text-align: center; }
   .city-card { display: none; }
   .city-tools { left: 12px; right: auto; top: 12px; }
-  .city.drawer-open .city-tools { right: auto; }
+  .city.drawer-open .city-tools, .city.drawer-open .city-sites, .city.drawer-open .city-keys { right: auto; }
   .city-sites, .city-keys { left: 12px; right: auto; top: 54px; }
   /* the drawer becomes a bottom sheet: half height, dragged up to 85% */
   .city-drawer { top: auto; left: 0; width: 100%; height: var(--sheet-h, 50vh); max-height: 85vh; border-width: 1.5px 0 0;
@@ -153,7 +166,7 @@ button { font: inherit; cursor: pointer; }
 @media (max-width: 640px) { .hint-narrow { display: inline; } }
 @media (prefers-reduced-motion: reduce) {
   .city-card, .city-drawer { animation: none; transition: none; }
-  .site path, .city-hint { transition: none; }
+  .site path, .city-hint, .site-dot, .site-label { transition: none; }
   .cm-bob { animation: none; }
 }
 

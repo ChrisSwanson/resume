@@ -8,6 +8,7 @@
 // never forces a layout in the middle of a frame.
 import { fillPreview, fillDrawer } from './card.js';
 import { createSprites } from './sprites.js';
+import { landmarkPoint } from './landmarks.js';
 
 const BASE = 'assets/hero/';
 const NS = 'http://www.w3.org/2000/svg';
@@ -22,6 +23,8 @@ const portraitQuery = matchMedia('(max-aspect-ratio: 3/4)');
 const phoneQuery = matchMedia('(max-width: 640px)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const SNAP_MS = 350;
+const DOT_PX = 11;                       // a landmark dot's on-screen diameter, CSS px, at every zoom
+const DOT_MARGIN = 10;                   // image px of clearance from the silhouette's edge
 // held-key movement, in CSS px/s: top speed, and how fast velocity approaches its target (1/s)
 const MOVE = { speed: 900, accel: 9, friction: 7 };
 const MOVE_KEYS = {
@@ -47,6 +50,11 @@ export function createCity(root, { profile, companies, theme }) {
   const sitesList = sitesBox.querySelector('ol');
   const keysBtn = root.querySelector('.keys-btn');
   const keysBox = root.querySelector('.city-keys');
+  const label = document.createElement('div');          // the hover/focus name pill, one for all sites
+  label.className = 'site-label';
+  label.setAttribute('aria-hidden', 'true');
+  label.innerHTML = '<i></i><span></span>';
+  root.append(label);
   const marker = document.createElement('div');
   marker.className = 'city-marker';
   marker.hidden = true;
@@ -119,7 +127,7 @@ export function createCity(root, { profile, companies, theme }) {
     buildList();
     sprites?.stop();
     sprites = createSprites(layers, scene, name, theme, { avoid: [...Object.values(regions[name].sites).map((r) => r.bbox), ...(scene.titleBoxes?.[name] ?? [])], base: BASE });
-    cx = W / 2; cy = H / 2;
+    cx = W / 2; cy = H / 2; pdx = pdy = 0;
     closeDrawer(false);
     showPreview(null);
     layout();
@@ -144,13 +152,24 @@ export function createCity(root, { profile, companies, theme }) {
       const d = rec.data;
       if (d.accent) a.style.setProperty('--brand', d.accent);
       a.setAttribute('aria-label', `${sites.length}. ${d.name}: ${[rec.kind === 'education' ? d.degree : d.role, d.dates].filter(Boolean).join(', ')}`);
+      const sb = signs[id];
       const path = document.createElementNS(NS, 'path');
       path.setAttribute('d', reg.polys.map((p) => 'M' + p.join(' ').replace(/(\S+ \S+) /g, '$1 L') + 'Z').join(''));
       a.append(path);
+      rec.dot = landmarkPoint(reg, sb, DOT_MARGIN);
+      rec.dotEl = null;
+      if (rec.dot) {
+        // decorative: the link itself carries the name; r is set from the world scale in layout()
+        const c = document.createElementNS(NS, 'circle');
+        c.setAttribute('class', 'site-dot');
+        c.setAttribute('aria-hidden', 'true');
+        c.setAttribute('cx', rec.dot[0]); c.setAttribute('cy', rec.dot[1]);
+        c.classList.toggle('is-hidden', id === selected);
+        a.append(rec.dotEl = c);
+      }
       regionsSvg.append(a);
       rec.bbox = reg.bbox;
       // the marker and snaps aim at the sign (the top centre of the logo), else the region's top
-      const sb = signs[id];
       rec.anchor = sb ? [(sb[0] + sb[2]) / 2, sb[1]] : [(reg.bbox[0] + reg.bbox[2]) / 2, reg.bbox[1]];
       rec.focus = sb ? [(sb[0] + sb[2]) / 2, (sb[1] + sb[3]) / 2] : [(reg.bbox[0] + reg.bbox[2]) / 2, (reg.bbox[1] + reg.bbox[3]) / 2];
     }
@@ -189,11 +208,14 @@ export function createCity(root, { profile, companies, theme }) {
     const source = world.querySelector('source');
     if (source) source.sizes = sizes;
     placeMarker();
-    apply();
+    const r = (DOT_PX / 2 / s).toFixed(2);   // constant on-screen size whatever the world scale
+    for (const c of regionsSvg.querySelectorAll('.site-dot')) c.setAttribute('r', r);
+    apply(true);                            // the viewport or scale may have changed under the same camera
   }
   /** clamp a camera centre so the image covers what is visible (the drawer may cover the image's
    * far edge, so a site near it can still be centred beside the drawer); returns
    * [x, y, clampedX, clampedY] */
+  let drawerW = 0;                      // the open drawer's laid-out width (CSS owns it)
   let insetR = 0, insetB = 0;           // CSS px covered by the open drawer (right) or sheet (bottom)
   function clamp(x, y) {
     const [W, H] = scene.frames[frameName].res;
@@ -202,47 +224,77 @@ export function createCity(root, { profile, companies, theme }) {
     return [nx, ny, nx !== x, ny !== y];
   }
   function setInsets() {
-    insetR = opened && !phoneQuery.matches ? drawerWidth() : 0;
+    if (opened) drawerW = drawer.offsetWidth;
+    insetR = opened && !phoneQuery.matches ? drawerW : 0;
     insetB = opened && phoneQuery.matches ? sheetHeight() : 0;
   }
-  function apply() {
+  // writes only when the clamped camera moved (a wheel against an edge changes nothing)
+  let lx = NaN, ly = NaN, ls = NaN;
+  function apply(force = false) {
     [cx, cy] = clamp(cx, cy);
+    if (!force && cx === lx && cy === ly && s === ls) return;
+    lx = cx; ly = cy; ls = s;
     const tx = vw / 2 - cx * s, ty = vh / 2 - cy * s;
     world.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
     const hw = vw / 2 / s, hh = vh / 2 / s;
     sprites?.setView(cx - hw, cy - hh, cx + hw, cy + hh, s);
     placePreview();
+    placeLabel();
   }
   const toScreen = (x, y) => [vw / 2 + (x - cx) * s, vh / 2 + (y - cy) * s];
 
-  // snaps: an eased pan that anything else (drag, wheel, keys, a newer snap) interrupts
-  let anim = 0, settle = null;
-  function stopSnap() {
-    cancelAnimationFrame(anim); anim = 0;
-    settle?.(); settle = null;
+  // One frame loop drives everything that moves the camera: pointer and wheel deltas (summed as
+  // they arrive), a running snap, and held-key movement. Each frame applies the camera once.
+  let raf = 0, last = 0, pdx = 0, pdy = 0;
+  let snap = null;                       // { x0, y0, x, y, t0, ms, done }
+  const held = new Set();
+  let vx = 0, vy = 0, moving = false;
+  const wake = () => { if (!raf) raf = requestAnimationFrame(frameTick); };
+  function frameTick(now) {
+    raf = 0;
+    const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));      // capped, so a stall is not one big jump
+    last = now;
+    cx += pdx; cy += pdy; pdx = pdy = 0;
+    if (snap) stepSnap(now);
+    if (moving) stepMove(dt);
+    apply();
+    if (snap || moving) wake();
   }
+
+  // snaps: an eased pan that anything else (drag, wheel, keys, a newer snap) interrupts
+  function stopSnap() {
+    const done = snap?.done;
+    snap = null;
+    done?.();
+  }
+  function stepSnap(now) {
+    const { x0, y0, x, y, t0, ms, done } = snap;
+    const t = Math.min(1, Math.max(0, (now - t0) / ms)), e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+    cx = x0 + (x - x0) * e; cy = y0 + (y - y0) * e;
+    if (t >= 1) { snap = null; done(); }
+  }
+  // turning on reduced motion mid-snap finishes it now
+  reducedMotion.addEventListener?.('change', () => {
+    if (!reducedMotion.matches || !snap) return;
+    const { x, y } = snap;
+    stopSnap();
+    cx = x; cy = y; apply();
+  });
   function panTo(x, y, ms = SNAP_MS) {
     stopSnap();
     [x, y] = clamp(x, y);
     if (reducedMotion.matches || ms <= 0) { cx = x; cy = y; apply(); return Promise.resolve(); }
-    const x0 = cx, y0 = cy, t0 = performance.now();
     return new Promise((done) => {
-      settle = done;
-      const step = (now) => {
-        const t = Math.min(1, (now - t0) / ms), e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
-        cx = x0 + (x - x0) * e; cy = y0 + (y - y0) * e; apply();
-        if (t < 1) anim = requestAnimationFrame(step); else { anim = 0; settle = null; done(); }
-      };
-      anim = requestAnimationFrame(step);
+      snap = { x0: cx, y0: cy, x, y, t0: performance.now(), ms, done };
+      wake();
     });
   }
   /** the image point to centre so `p` sits in the middle of what the drawer leaves visible */
   function centreFor(p) {
     if (!opened) return p;
     if (phoneQuery.matches) return [p[0], p[1] + sheetHeight() / 2 / s];
-    return [p[0] + drawerWidth() / 2 / s, p[1]];
+    return [p[0] + drawerW / 2 / s, p[1]];
   }
-  const drawerWidth = () => Math.min(420, vw * 0.92);
   const sheetHeight = () => vh * (drawer.classList.contains('expanded') ? 0.85 : 0.5);
   function snapTo(id, ms = SNAP_MS) {
     const rec = records.get(id);
@@ -250,12 +302,8 @@ export function createCity(root, { profile, companies, theme }) {
     return panTo(...centreFor(rec.focus), ms);
   }
 
-  // held-key movement: one rAF integrates velocity toward the held direction
-  const held = new Set();
-  let vx = 0, vy = 0, moveRaf = 0, last = 0;
-  function moveLoop(now) {
-    const dt = Math.min(0.1, (now - last) / 1000);           // capped, so a stall is not one big jump
-    last = now;
+  // held-key movement: velocity approaches the held direction
+  function stepMove(dt) {
     let ix = (held.has('right') ? 1 : 0) - (held.has('left') ? 1 : 0);
     let iy = (held.has('down') ? 1 : 0) - (held.has('up') ? 1 : 0);
     if (ix && iy) { ix *= Math.SQRT1_2; iy *= Math.SQRT1_2; }
@@ -269,17 +317,15 @@ export function createCity(root, { profile, companies, theme }) {
     if (hitX) vx = 0;
     if (hitY) vy = 0;
     cx = nx; cy = ny;
-    apply();
-    if (held.size || Math.hypot(vx, vy) > 4) moveRaf = requestAnimationFrame(moveLoop);
-    else { moveRaf = 0; vx = vy = 0; }
+    if (!held.size && Math.hypot(vx, vy) <= 4) { moving = false; vx = vy = 0; }
   }
   function startMove() {
     stopSnap();
-    if (!moveRaf) { last = performance.now(); moveRaf = requestAnimationFrame(moveLoop); }
+    if (!moving) { moving = true; last = performance.now(); }
+    wake();
   }
   function clearKeys() {
-    held.clear(); vx = vy = 0;
-    cancelAnimationFrame(moveRaf); moveRaf = 0;
+    held.clear(); vx = vy = 0; moving = false;
   }
   addEventListener('blur', clearKeys);
   document.addEventListener('visibilitychange', () => { if (document.hidden) clearKeys(); });
@@ -297,7 +343,7 @@ export function createCity(root, { profile, companies, theme }) {
     if (!drag.moved && Math.hypot(dx, dy) < 6) return;
     if (!drag.moved) { drag.moved = true; stopSnap(); viewport.setPointerCapture(e.pointerId); viewport.classList.add('dragging'); hover(null); }
     drag.x = e.clientX; drag.y = e.clientY;
-    cx -= dx / s; cy -= dy / s; apply();
+    pdx -= dx / s; pdy -= dy / s; wake();
   });
   const endDrag = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -313,7 +359,7 @@ export function createCity(root, { profile, companies, theme }) {
     const k = e.deltaMode === 1 ? 16 : 1;
     let dx = e.deltaX * k, dy = e.deltaY * k;
     if (e.shiftKey && !dx) { dx = dy; dy = 0; }
-    cx += dx / s; cy += dy / s; apply();
+    pdx += dx / s; pdy += dy / s; wake();
   }, { passive: false });
 
   // the hint goes after the first interaction, and stays gone for this visitor
@@ -409,7 +455,7 @@ export function createCity(root, { profile, companies, theme }) {
     const b = records.get(id)?.bbox;
     if (!b) return;
     const [x0, y0] = toScreen(b[0], b[1]), [x1, y1] = toScreen(b[2], b[3]), m = 40;
-    const right = opened && !phoneQuery.matches ? vw - drawerWidth() : vw;
+    const right = opened && !phoneQuery.matches ? vw - drawerW : vw;
     if (x0 >= m && x1 <= right - m && y0 >= m && y1 <= vh - m) return;
     snapTo(id, 450);
   }
@@ -419,7 +465,32 @@ export function createCity(root, { profile, companies, theme }) {
       const id = a.dataset.id;
       a.classList.toggle('on', id === hovered || id === listed || id === opened);
     }
+    showLabel(opened ? null : hovered);
   }
+  // ── landmark label: a name pill just above the hovered or focused site's dot ──
+  let labelId = null, lw = 0, lh = 0;
+  function showLabel(id) {
+    const rec = id && records.get(id);
+    if (!rec?.dot) { labelId = null; label.classList.remove('show'); return; }
+    if (id !== labelId) {
+      labelId = id;
+      label.querySelector('span').textContent = rec.data.name;
+      if (rec.data.accent) label.style.setProperty('--brand', rec.data.accent); else label.style.removeProperty('--brand');
+      lw = label.offsetWidth; lh = label.offsetHeight;
+    }
+    label.classList.add('show');
+    placeLabel();
+  }
+  function placeLabel() {
+    const rec = labelId && records.get(labelId);
+    if (!rec?.dot) return;
+    const [dx, dy] = toScreen(rec.dot[0], rec.dot[1]);
+    // above the (hover-grown) dot, or below it where the top edge leaves no room
+    const m = 8, gap = DOT_PX / 2 * 1.3 + 6, x = Math.min(Math.max(dx - lw / 2, m), vw - lw - m);
+    const up = dy - gap - lh, y = Math.min(up >= m ? up : dy + gap, vh - lh - m);
+    label.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+  }
+  const setDotHidden = (id, on) => records.get(id)?.dotEl?.classList.toggle('is-hidden', on);
   function hover(id) {
     if (id === hovered) return;
     hovered = id;
@@ -457,7 +528,9 @@ export function createCity(root, { profile, companies, theme }) {
   // ── selection marker ──────────────────────────────────────────────────────
   function select(id) {
     if (id === selected) return;
+    if (selected) setDotHidden(selected, false);       // the red marker leaves, the dot returns
     selected = id;
+    if (id) setDotHidden(id, true);
     marker.hidden = !id;
     for (const b of sitesList.querySelectorAll('button')) b.classList.toggle('selected', b.dataset.id === id);
     placeMarker();
@@ -490,7 +563,7 @@ export function createCity(root, { profile, companies, theme }) {
     if (!wasOpen) drawer.classList.remove('expanded');
     drawer.hidden = false;
     root.classList.add('drawer-open');
-    setInsets();
+    setInsets();                            // measures the drawer, laid out now
     snapTo(id);
     close.focus({ preventScroll: true });
   }
@@ -498,6 +571,7 @@ export function createCity(root, { profile, companies, theme }) {
     if (!opened) { drawer.hidden = true; return; }
     const id = opened;
     opened = null;
+    stopSnap();                             // it was heading for a spot beside the drawer
     drawer.hidden = true;
     drawer.style.removeProperty('--sheet-h');
     root.classList.remove('drawer-open');
@@ -589,6 +663,7 @@ export function createCity(root, { profile, companies, theme }) {
     setActive(on) {
       active = on;
       clearKeys();
+      if (!on) { stopSnap(); pdx = pdy = 0; drag = null; viewport.classList.remove('dragging'); }
       if (!sprites) return;
       if (on) { layout(); sprites.start(); } else { sprites.stop(); closeDrawer(false); showPreview(null); toggleList(false); toggleKeys(false); }
     },

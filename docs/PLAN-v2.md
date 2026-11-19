@@ -29,7 +29,7 @@ overlay or sample the reference image.
   - Use official vector files (press or brand kits, or Wikimedia Commons), with each source URL
     recorded in `render/logos/SOURCES.md`.
   - Don't alter, recolour or distort them.
-  - The site carries a line saying trademarks belong to their owners and no endorsement is implied.
+  - The Text view carries a line saying trademarks belong to their owners and no endorsement is implied (not a City view overlay).
 - Picked layout: B ("Park edge"), plus a denser city with the camera pulled back.
 
 **Revised later on 2026-11-17:**
